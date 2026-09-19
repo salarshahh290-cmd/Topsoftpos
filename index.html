@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TopSoft POS</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @media print {
+      body > * { display: none !important; }
+      #receipt-print { display: block !important; }
+    }
+  </style>
+</head>
+<body class="bg-gray-100 font-sans">
+
+  <!-- LOGIN -->
+  <div id="login-screen" class="flex items-center justify-center min-h-screen bg-gray-900 p-4">
+    <div class="bg-white p-7 rounded-2xl shadow-xl w-full max-w-md">
+      <h1 class="text-3xl font-bold text-center text-gray-800">🧾 TopSoft POS</h1>
+      <p class="text-sm text-center text-gray-500 mt-2 mb-6">
+        Admin: salarshahh290@gmail.com
+      </p>
+
+      <label class="block text-sm font-medium mb-1">Admin Email</label>
+      <input id="admin-email" type="email"
+        value="salarshahh290@gmail.com"
+        class="w-full p-3 border rounded-lg mb-4 focus:ring-2 focus:ring-indigo-500 outline-none">
+
+      <label class="block text-sm font-medium mb-1">Password</label>
+      <input id="admin-password" type="password" placeholder="Firebase password"
+        class="w-full p-3 border rounded-lg mb-4 focus:ring-2 focus:ring-indigo-500 outline-none">
+
+      <button id="login-btn"
+        class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-lg font-bold">
+        Login to POS
+      </button>
+
+      <p id="login-message" class="text-sm text-red-600 text-center mt-4"></p>
+    </div>
+  </div>
+
+  <!-- POS -->
+  <div id="pos-screen" class="hidden min-h-screen">
+    <header class="bg-white border-b p-4 flex flex-wrap gap-3 justify-between items-center">
+      <div>
+        <h1 class="text-2xl font-bold text-gray-800">🛍️ TopSoft POS</h1>
+        <p class="text-xs text-gray-500">Real-time Firebase Database</p>
+      </div>
+      <div class="flex gap-2">
+        <button id="sales-btn" class="bg-blue-600 text-white px-4 py-2 rounded-lg font-semibold">Sales</button>
+        <button id="logout-btn" class="bg-red-600 text-white px-4 py-2 rounded-lg font-semibold">Logout</button>
+      </div>
+    </header>
+
+    <main class="p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-3 gap-5">
+
+      <!-- PRODUCTS -->
+      <section class="lg:col-span-2 bg-white rounded-xl shadow p-4">
+        <div class="flex justify-between items-center gap-3 mb-4">
+          <h2 class="text-xl font-bold">Products</h2>
+          <span id="connection-status" class="text-xs px-3 py-1 rounded-full bg-gray-100">Connecting...</span>
+        </div>
+
+        <input id="barcode-input" type="text"
+          placeholder="Scan barcode / enter Product ID and press Enter"
+          class="w-full p-3 border rounded-lg mb-4 outline-none focus:ring-2 focus:ring-indigo-500">
+
+        <div id="product-grid" class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4 max-h-[65vh] overflow-y-auto">
+          <p class="text-gray-400">Loading products...</p>
+        </div>
+      </section>
+
+      <!-- CART -->
+      <section class="bg-gray-50 rounded-xl shadow p-4 flex flex-col min-h-[500px]">
+        <h2 class="text-xl font-bold mb-4">🛒 Current Cart</h2>
+        <div id="cart-items" class="flex-1 overflow-y-auto space-y-3">
+          <p class="text-gray-400 text-center mt-10">Cart is empty</p>
+        </div>
+
+        <div class="border-t mt-4 pt-4 bg-white rounded-lg p-4">
+          <div class="flex justify-between text-xl font-bold mb-4">
+            <span>Total</span>
+            <span id="cart-total">Rs 0</span>
+          </div>
+          <button id="checkout-btn"
+            class="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg font-bold">
+            Complete Sale & Print
+          </button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- SALES MODAL -->
+  <div id="sales-modal" class="hidden fixed inset-0 bg-black/50 z-50 p-4">
+    <div class="bg-white rounded-xl max-w-3xl mx-auto mt-8 p-5 max-h-[85vh] overflow-y-auto">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-xl font-bold">Sales History</h2>
+        <button id="close-sales" class="text-red-600 font-bold text-xl">×</button>
+      </div>
+      <div id="sales-list"></div>
+    </div>
+  </div>
+
+  <!-- RECEIPT -->
+  <div id="receipt-print" class="hidden bg-white text-black font-mono text-sm max-w-sm mx-auto p-5">
+    <div class="text-center">
+      <h2 class="text-xl font-bold">TOPSOFT POS</h2>
+      <p>Sales Receipt</p>
+      <p id="receipt-date"></p>
+    </div>
+    <hr class="my-3 border-dashed border-black">
+    <div id="receipt-items" class="space-y-1"></div>
+    <hr class="my-3 border-dashed border-black">
+    <div class="flex justify-between font-bold text-base">
+      <span>TOTAL</span>
+      <span id="receipt-total">Rs 0</span>
+    </div>
+    <p class="text-center mt-5">Thank You!</p>
+  </div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+  import {
+    getDatabase, ref, onValue, update, push, get
+  } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+  import {
+    getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged
+  } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+  // ================= FIREBASE CONFIG =================
+  const firebaseConfig = {
+    apiKey: "AIzaSyAPtameri_DgfR6Hfve9v26bc8hqFeI5i8",
+    authDomain: "topsoftpos.firebaseapp.com",
+    databaseURL: "https://topsoftpos-default-rtdb.asia-southeast1.firebasedatabase.app",
+    projectId: "topsoftpos",
+    storageBucket: "topsoftpos.firebasestorage.app",
+    messagingSenderId: "832014142668",
+    appId: "1:832014142668:web:526b5f961d42eeb00c8669"
+  };
+
+  const ALLOWED_EMAIL = "salarshahh290@gmail.com";
+
+  const app = initializeApp(firebaseConfig);
+  const db = getDatabase(app);
+  const auth = getAuth(app);
+
+  let productsData = {};
+  let cart = [];
+
+  const $ = (id) => document.getElementById(id);
+
+  // ================= AUTH =================
+  onAuthStateChanged(auth, (user) => {
+    if (!user) {
+      $("login-screen").classList.remove("hidden");
+      $("pos-screen").classList.add("hidden");
+      return;
+    }
+
+    if ((user.email || "").toLowerCase() !== ALLOWED_EMAIL.toLowerCase()) {
+      alert("Access denied. This account is not authorized.");
+      signOut(auth);
+      return;
+    }
+
+    $("login-screen").classList.add("hidden");
+    $("pos-screen").classList.remove("hidden");
+    $("connection-status").textContent = "Connected";
+    $("connection-status").className = "text-xs px-3 py-1 rounded-full bg-green-100 text-green-700";
+
+    loadProducts();
+    $("barcode-input").focus();
+  });
+
+  $("login-btn").addEventListener("click", async () => {
+    const email = $("admin-email").value.trim();
+    const password = $("admin-password").value;
+
+    if (email.toLowerCase() !== ALLOWED_EMAIL.toLowerCase()) {
+      $("login-message").textContent = "Only the authorized admin email can login.";
+      return;
+    }
+    if (!password) {
+      $("login-message").textContent = "Password enter karein.";
+      return;
+    }
+
+    $("login-message").textContent = "Logging in...";
+
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+      $("login-message").textContent = "";
+    } catch (error) {
+      $("login-message").textContent = "Login failed: " + error.message;
+    }
+  });
+
+  $("admin-password").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") $("login-btn").click();
+  });
+
+  $("logout-btn").addEventListener("click", () => signOut(auth));
+
+  // ================= REAL-TIME PRODUCTS =================
+  function loadProducts() {
+    onValue(ref(db, "products"), (snapshot) => {
+      productsData = snapshot.val() || {};
+      renderProducts();
+    }, (error) => {
+      $("connection-status").textContent = "Database error";
+      $("connection-status").className = "text-xs px-3 py-1 rounded-full bg-red-100 text-red-700";
+      alert("Products load failed: " + error.message);
+    });
+  }
+
+  function renderProducts() {
+    const grid = $("product-grid");
+    grid.innerHTML = "";
+
+    const ids = Object.keys(productsData);
+
+    if (!ids.length) {
+      grid.innerHTML = `
+        <div class="col-span-full text-center text-gray-500 py-10">
+          No products found. Add products under Firebase Realtime Database → products.
+        </div>`;
+      return;
+    }
+
+    ids.forEach((id) => {
+      const product = productsData[id] || {};
+      const stock = Number(product.stock || 0);
+      const price = Number(product.price || 0);
+
+      const card = document.createElement("div");
+      card.className = "border rounded-xl p-4 shadow-sm bg-white flex flex-col justify-between";
+
+      const top = document.createElement("div");
+      const idEl = document.createElement("span");
+      idEl.className = "text-xs bg-gray-100 px-2 py-1 rounded";
+      idEl.textContent = "ID: " + id;
+
+      const nameEl = document.createElement("h3");
+      nameEl.className = "font-bold text-lg mt-2";
+      nameEl.textContent = product.name || "Unnamed Product";
+
+      const stockEl = document.createElement("p");
+      stockEl.className = stock > 0 ? "text-green-600 text-sm" : "text-red-600 text-sm";
+      stockEl.textContent = "Stock: " + stock;
+
+      top.append(idEl, nameEl, stockEl);
+
+      const bottom = document.createElement("div");
+      bottom.className = "flex justify-between items-center mt-4";
+
+      const priceEl = document.createElement("span");
+      priceEl.className = "font-bold text-indigo-600";
+      priceEl.textContent = "Rs " + price;
+
+      const addBtn = document.createElement("button");
+      addBtn.className = "bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-400 text-white px-3 py-2 rounded-lg";
+      addBtn.textContent = "Add";
+      addBtn.disabled = stock <= 0;
+      addBtn.addEventListener("click", () => addToCart(id));
+
+      bottom.append(priceEl, addBtn);
+      card.append(top, bottom);
+      grid.appendChild(card);
+    });
+  }
+
+  // ================= BARCODE =================
+  $("barcode-input").addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+
+    const code = $("barcode-input").value.trim();
+    if (!code) return;
+
+    if (productsData[code]) {
+      addToCart(code);
+    } else {
+      const found = Object.entries(productsData).find(([id, p]) =>
+        String(p?.barcode || "") === code
+      );
+      if (found) addToCart(found[0]);
+      else alert("Product/Barcode not found: " + code);
+    }
+
+    $("barcode-input").value = "";
+  });
+
+  // ================= CART =================
+  function addToCart(productId) {
+    const product = productsData[productId];
+    if (!product) return;
+
+    const stock = Number(product.stock || 0);
+    if (stock <= 0) {
+      alert("Out of stock!");
+      return;
+    }
+
+    const existing = cart.find(x => x.id === productId);
+
+    if (existing) {
+      if (existing.quantity >= stock) {
+        alert("Not enough stock available!");
+        return;
+      }
+      existing.quantity++;
+    } else {
+      cart.push({
+        id: productId,
+        name: String(product.name || "Unnamed Product"),
+        price: Number(product.price || 0),
+        quantity: 1
+      });
+    }
+
+    renderCart();
+    $("barcode-input").focus();
+  }
+
+  function renderCart() {
+    const box = $("cart-items");
+    box.innerHTML = "";
+
+    if (!cart.length) {
+      box.innerHTML = '<p class="text-gray-400 text-center mt-10">Cart is empty</p>';
+      $("cart-total").textContent = "Rs 0";
+      return;
+    }
+
+    let total = 0;
+
+    cart.forEach((item, index) => {
+      const itemTotal = item.price * item.quantity;
+      total += itemTotal;
+
+      const row = document.createElement("div");
+      row.className = "bg-white border rounded-lg p-3 flex justify-between items-center";
+
+      const info = document.createElement("div");
+      const name = document.createElement("p");
+      name.className = "font-bold";
+      name.textContent = item.name;
+
+      const detail = document.createElement("p");
+      detail.className = "text-xs text-gray-500";
+      detail.textContent = `Rs ${item.price} × ${item.quantity}`;
+
+      info.append(name, detail);
+
+      const right = document.createElement("div");
+      right.className = "text-right";
+
+      const amount = document.createElement("p");
+      amount.className = "font-bold";
+      amount.textContent = "Rs " + itemTotal;
+
+      const remove = document.createElement("button");
+      remove.className = "text-red-600 text-xs";
+      remove.textContent = "Remove";
+      remove.addEventListener("click", () => {
+        cart.splice(index, 1);
+        renderCart();
+      });
+
+      right.append(amount, remove);
+      row.append(info, right);
+      box.appendChild(row);
+    });
+
+    $("cart-total").textContent = "Rs " + total;
+  }
+
+  // ================= CHECKOUT =================
+  $("checkout-btn").addEventListener("click", async () => {
+    if (!cart.length) {
+      alert("Cart is empty!");
+      return;
+    }
+
+    const updates = {};
+
+    // Re-check stock from Firebase before sale.
+    for (const item of cart) {
+      const snap = await get(ref(db, "products/" + item.id));
+      const current = snap.val();
+
+      if (!current) {
+        alert(`Product ${item.name} no longer exists.`);
+        return;
+      }
+
+      const currentStock = Number(current.stock || 0);
+      if (currentStock < item.quantity) {
+        alert(`Insufficient stock for ${item.name}. Available: ${currentStock}`);
+        return;
+      }
+
+      updates["products/" + item.id + "/stock"] = currentStock - item.quantity;
+    }
+
+    const total = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+    const sale = {
+      items: cart.map(item => ({...item})),
+      total: total,
+      timestamp: new Date().toISOString(),
+      adminEmail: ALLOWED_EMAIL
+    };
+
+    const saleKey = push(ref(db, "sales")).key;
+    updates["sales/" + saleKey] = sale;
+
+    try {
+      await update(ref(db), updates);
+
+      const completed = cart.map(item => ({...item}));
+      cart = [];
+      renderCart();
+
+      printReceipt(completed, total);
+      alert("Sale completed successfully!");
+    } catch (error) {
+      alert("Checkout failed: " + error.message);
+    }
+  });
+
+  // ================= RECEIPT =================
+  function printReceipt(items, total) {
+    $("receipt-date").textContent = new Date().toLocaleString();
+
+    const container = $("receipt-items");
+    container.innerHTML = "";
+
+    items.forEach(item => {
+      const row = document.createElement("div");
+      row.className = "flex justify-between";
+
+      const left = document.createElement("span");
+      left.textContent = `${item.name} x${item.quantity}`;
+
+      const right = document.createElement("span");
+      right.textContent = "Rs " + (item.price * item.quantity);
+
+      row.append(left, right);
+      container.appendChild(row);
+    });
+
+    $("receipt-total").textContent = "Rs " + total;
+
+    const receipt = $("receipt-print").innerHTML;
+    const win = window.open("", "_blank", "width=420,height=700");
+
+    if (!win) {
+      alert("Browser ne print window block kar di. Popup allow karein.");
+      return;
+    }
+
+    win.document.write(`
+      <!doctype html>
+      <html>
+      <head>
+        <title>TopSoft POS Receipt</title>
+        <style>
+          body { font-family: monospace; font-size: 12px; padding: 15px; }
+          .flex { display:flex; justify-content:space-between; }
+          .text-center { text-align:center; }
+          .font-bold { font-weight:bold; }
+          .text-xl { font-size:18px; }
+          .text-base { font-size:14px; }
+          .my-3 { margin:12px 0; }
+          .mt-5 { margin-top:20px; }
+          hr { border:0; border-top:1px dashed #000; }
+        </style>
+      </head>
+      <body>${receipt}</body>
+      </html>
+    `);
+    win.document.close();
+    win.focus();
+
+    setTimeout(() => {
+      win.print();
+      win.close();
+    }, 400);
+  }
+
+  // ================= SALES HISTORY =================
+  $("sales-btn").addEventListener("click", async () => {
+    $("sales-modal").classList.remove("hidden");
+    $("sales-list").innerHTML = "<p>Loading...</p>";
+
+    try {
+      const snapshot = await get(ref(db, "sales"));
+      const sales = snapshot.val() || {};
+      const entries = Object.entries(sales).reverse();
+
+      if (!entries.length) {
+        $("sales-list").innerHTML = '<p class="text-gray-500">No sales yet.</p>';
+        return;
+      }
+
+      $("sales-list").innerHTML = "";
+
+      entries.slice(0, 100).forEach(([id, sale]) => {
+        const box = document.createElement("div");
+        box.className = "border rounded-lg p-3 mb-3";
+
+        const date = document.createElement("p");
+        date.className = "font-semibold";
+        date.textContent = new Date(sale.timestamp).toLocaleString();
+
+        const total = document.createElement("p");
+        total.className = "text-green-700 font-bold";
+        total.textContent = "Total: Rs " + Number(sale.total || 0);
+
+        const items = document.createElement("p");
+        items.className = "text-sm text-gray-600";
+        items.textContent = (sale.items || [])
+          .map(x => `${x.name} × ${x.quantity}`)
+          .join(", ");
+
+        box.append(date, total, items);
+        $("sales-list").appendChild(box);
+      });
+    } catch (error) {
+      $("sales-list").innerHTML = '<p class="text-red-600">Could not load sales: ' +
+        error.message + '</p>';
+    }
+  });
+
+  $("close-sales").addEventListener("click", () => {
+    $("sales-modal").classList.add("hidden");
+  });
+</script>
+</body>
+</html>
